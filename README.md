@@ -1,53 +1,86 @@
-# マンション管理組合アプリ（モック）
+# マンション管理組合アプリ
 
-マンション管理組合の業務をデジタル化するWebアプリのモック実装です。
+マンション管理組合の業務をデジタル化するWebアプリです。
+区分所有者（住民）・理事会役員・管理会社の3者間コミュニケーションと業務管理を効率化します。
 
-## デモ
+## デモ（モック）
 
-[https://github.com/k7markn/mansion-kanri-app](https://github.com/k7markn/mansion-kanri-app)
+**https://k7markn.github.io/mansion-kanri-app/**
 
-## 技術スタック
+| ロール | メールアドレス | 利用可能な主な機能 |
+|---|---|---|
+| 住民 | tanaka@example.com | お知らせ・問い合わせ・施設予約・書類閲覧 |
+| 理事（理事長） | sato@example.com | 住民機能 + 会計・設備・総会管理 |
+| 管理会社 | yamada@mgmt.co.jp | 全機能 |
 
-- **フレームワーク**: Next.js 15 (App Router)
-- **言語**: TypeScript
-- **スタイリング**: Tailwind CSS
-- **アイコン**: Lucide React
-- **状態管理**: モックデータ（JSONファイル）
+---
 
 ## 機能一覧
 
-| 画面 | 説明 |
+| 機能 | 説明 |
 |---|---|
-| ログイン | 3ロール（住民・理事・管理会社）でデモログイン可能 |
-| ダッシュボード | ロール別の統計・お知らせ・会議予定を表示 |
-| お知らせ・掲示板 | 管理組合からの通知と住民掲示板 |
-| 総会・理事会管理 | 会議の一覧・詳細・議事録リンク |
+| ダッシュボード | ロール別の統計・お知らせ・会議予定 |
+| お知らせ・掲示板 | 管理組合からの通知・住民掲示板 |
+| 総会・理事会管理 | 会議の招集・議題・議事録管理 |
 | 会計・財務管理 | 収支明細・月次推移・予算vs実績 |
-| 修繕・設備管理 | 設備台帳・点検記録 |
-| 問い合わせ管理 | 住民からの問い合わせ受付・対応管理 |
+| 修繕・設備管理 | 設備台帳・点検記録・期限アラート |
+| 問い合わせ管理 | 住民からの受付・対応状況管理 |
 | 共用施設予約 | 集会室・駐車場等の予約カレンダー |
-| 書類管理 | 規約・議事録等のドキュメント一覧 |
-| 投票・アンケート | アンケートの作成・回答・集計表示 |
+| 書類管理 | 規約・議事録・契約書のドキュメント管理 |
+| 投票・アンケート | アンケート作成・回答・集計表示 |
 
-## デモアカウント
+---
 
-| ロール | メールアドレス | 表示内容 |
-|---|---|---|
-| 住民 | tanaka@example.com | 住民向けの基本機能 |
-| 理事（理事長） | sato@example.com | 理事会向けの管理機能（財務・設備等） |
-| 管理会社 | yamada@mgmt.co.jp | 管理会社向けの全機能 |
+## 技術スタック
+
+| レイヤー | 技術 |
+|---|---|
+| フレームワーク | Next.js 15 (App Router) |
+| 言語 | TypeScript |
+| スタイリング | Tailwind CSS |
+| DB | Supabase (PostgreSQL) ※Phase 1〜 |
+| ORM | Prisma ※Phase 1〜 |
+| 認証 | Supabase Auth ※Phase 1〜 |
+| ファイル保存 | Supabase Storage ※Phase 1〜 |
+| メール通知 | Resend ※Phase 1〜 |
+| バリデーション | Zod ※Phase 1〜 |
+| ホスティング | Vercel（本番予定）/ GitHub Pages（モック） |
+
+---
 
 ## セットアップ
 
-```bash
-# 依存関係のインストール
-npm install
+### 必要な環境
 
-# 開発サーバーの起動
+- Node.js 20以上
+- npm 9以上
+
+### インストールと起動
+
+```bash
+git clone https://github.com/k7markn/mansion-kanri-app.git
+cd mansion-kanri-app
+npm install
 npm run dev
 ```
 
-ブラウザで [http://localhost:3000](http://localhost:3000) を開きます。
+ブラウザで http://localhost:3000 を開いてください。
+
+### 環境変数（Phase 1以降）
+
+`.env.local` を作成して以下を設定してください。
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+DATABASE_URL=your_database_url
+DIRECT_URL=your_direct_url
+RESEND_API_KEY=your_resend_api_key
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+---
 
 ## ディレクトリ構成
 
@@ -64,26 +97,51 @@ src/
 │   │   ├── reservations/   # 共用施設予約
 │   │   ├── documents/      # 書類管理
 │   │   └── surveys/        # 投票・アンケート
+│   ├── api/                # APIエンドポイント（Route Handlers）
 │   └── login/              # ログイン画面
 ├── components/
+│   ├── ui/                 # 汎用UIコンポーネント
 │   ├── Sidebar.tsx         # サイドバーナビゲーション
 │   └── Header.tsx          # ページヘッダー
 ├── data/
-│   └── mock.ts             # モックデータ
-├── types/
-│   └── index.ts            # TypeScript型定義
-└── lib/
-    └── utils.ts            # ユーティリティ関数
+│   └── mock.ts             # モックデータ（Phase 0のみ）
+├── lib/
+│   ├── supabase/           # Supabaseクライアント
+│   ├── prisma.ts           # Prismaクライアント
+│   └── utils.ts            # ユーティリティ関数
+└── types/
+    └── index.ts            # TypeScript型定義
 ```
 
-## 要件定義書
-
-[マンション管理組合アプリ_要件定義書.md](../マンション管理組合アプリ_要件定義書.md) を参照してください。
+---
 
 ## 開発フェーズ
 
-- [x] **Phase 0**: モック作成（本リポジトリ）
-- [ ] **Phase 1（MVP）**: 住民情報・お知らせ・書類・問い合わせ
-- [ ] **Phase 2**: 総会・理事会・会計・投票
-- [ ] **Phase 3**: 設備・施設予約・決済・モバイルアプリ
-- [ ] **Phase 4**: 外部連携・高度分析
+### Phase 0 — モック ✅ 完了
+全画面のUIモックをNext.jsで実装。GitHub Pagesで公開済み。
+
+### Phase 1 — MVP（実装中）
+認証基盤・住民管理・お知らせ・問い合わせ・書類管理の実機能化。
+
+- [ ] Supabase + Prisma セットアップ
+- [ ] 認証（Supabase Auth）
+- [ ] 住戸・ユーザー管理
+- [ ] お知らせ CRUD + メール通知
+- [ ] 問い合わせ管理
+- [ ] 書類アップロード（Supabase Storage）
+
+### Phase 2
+総会・理事会管理 / 会計・財務管理 / 投票・アンケート
+
+### Phase 3
+修繕・設備管理 / 共用施設予約 / 決済連携（Stripe）
+
+### Phase 4
+長期修繕計画シミュレーション / 外部システム連携 / 分析レポート
+
+---
+
+## ドキュメント
+
+- [要件定義書](../マンション管理組合アプリ_要件定義書.md)
+- [Claude向け開発ガイド](./CLAUDE.md)
