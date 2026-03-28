@@ -1,30 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Building2, Lock, Mail } from "lucide-react";
-import type { UserRole } from "@/types";
-
-const DEMO_ACCOUNTS: { role: UserRole; label: string; email: string; color: string }[] = [
-  { role: "resident", label: "住民", email: "tanaka@example.com", color: "bg-green-100 text-green-800 hover:bg-green-200" },
-  { role: "board", label: "理事（理事長）", email: "sato@example.com", color: "bg-blue-100 text-blue-800 hover:bg-blue-200" },
-  { role: "management", label: "管理会社", email: "yamada@mgmt.co.jp", color: "bg-purple-100 text-purple-800 hover:bg-purple-200" },
-];
+import { Building2, Lock, Mail, AlertCircle } from "lucide-react";
+import { login } from "@/app/actions/auth";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("sato@example.com");
-  const [password, setPassword] = useState("password");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    router.push("/dashboard");
-  };
-
-  const handleDemoLogin = (demoEmail: string) => {
-    setEmail(demoEmail);
-    router.push("/dashboard");
-  };
+    setError(null);
+    setLoading(true);
+    const formData = new FormData(e.currentTarget);
+    const result = await login(formData);
+    if (result?.error) {
+      setError(result.error);
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -40,7 +34,14 @@ export default function LoginPage() {
 
         {/* Form */}
         <div className="px-8 py-6">
-          <form onSubmit={handleLogin} className="space-y-4">
+          {error && (
+            <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+              <AlertCircle size={16} className="flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 メールアドレス
@@ -49,9 +50,9 @@ export default function LoginPage() {
                 <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  name="email"
                   className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="example@email.com"
                   required
                 />
               </div>
@@ -64,41 +65,26 @@ export default function LoginPage() {
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  name="password"
                   className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="パスワード"
                   required
                 />
               </div>
             </div>
             <button
               type="submit"
-              className="w-full bg-blue-700 text-white py-2.5 rounded-lg font-medium hover:bg-blue-800 transition-colors"
+              disabled={loading}
+              className="w-full bg-blue-700 text-white py-2.5 rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              ログイン
+              {loading ? "ログイン中..." : "ログイン"}
             </button>
           </form>
-
-          <div className="mt-6">
-            <p className="text-xs text-gray-500 text-center mb-3 font-medium">デモアカウントでログイン</p>
-            <div className="space-y-2">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.role}
-                  onClick={() => handleDemoLogin(account.email)}
-                  className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors text-left flex justify-between items-center ${account.color}`}
-                >
-                  <span>{account.label}</span>
-                  <span className="text-xs opacity-70">{account.email}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="bg-gray-50 px-8 py-4 text-center">
           <p className="text-xs text-gray-500">
-            ※ これはモックアプリです。実際の個人情報は使用していません。
+            ログインできない場合は管理者へお問い合わせください
           </p>
         </div>
       </div>

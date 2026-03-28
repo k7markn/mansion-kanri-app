@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ユーザーロール
+enum UserRole {
+  RESIDENT   // 住民
+  BOARD      // 理事
+  MANAGEMENT // 管理会社
+  ADMIN      // システム管理者
+
+  @@map("user_role")
+}
+
+// お知らせカテゴリ
+enum AnnouncementCategory {
+  BOARD        // 理事会からのお知らせ
+  CONSTRUCTION // 工事・点検情報
+  EMERGENCY    // 緊急連絡
+  GENERAL      // 一般
+  BULLETIN     // 住民掲示板
+
+  @@map("announcement_category")
+}
+
+// 重要度
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+
+  @@map("announcement_priority")
+}
+
+// 書類カテゴリ
+enum DocumentCategory {
+  RULES        // 管理規約
+  BYLAWS       // 使用細則
+  MINUTES      // 議事録
+  MEETING_DOCS // 総会資料
+  CONTRACTS    // 契約書
+  DRAWINGS     // 図面
+  OTHER        // その他
+
+  @@map("document_category")
+}
+
+// 書類公開範囲
+enum DocumentVisibility {
+  ALL_RESIDENTS   // 全住民
+  BOARD_ONLY      // 役員のみ
+  MANAGEMENT_ONLY // 管理会社のみ
+
+  @@map("document_visibility")
+}
+
+// 問い合わせカテゴリ
+enum InquiryCategory {
+  EQUIPMENT   // 設備不具合
+  NOISE       // 騒音・近隣トラブル
+  COMMON_AREA // 共用部への要望
+  OTHER       // その他
+
+  @@map("inquiry_category")
+}
+
+// 問い合わせ状態
+enum InquiryStatus {
+  RECEIVED    // 受付済
+  IN_PROGRESS // 対応中
+  COMPLETED   // 完了
+  ON_HOLD     // 保留
+
+  @@map("inquiry_status")
+}
+
+// 棟
+model Building {
+  id        String   @id @default(cuid())
+  name      String
+  units     Unit[]
+  createdAt DateTime @default(now())
+
+  @@map("buildings")
+}
+
+// 住戸
+model Unit {
+  id             String    @id @default(cuid())
+  buildingId     String?
+  building       Building? @relation(fields: [buildingId], references: [id])
+  roomNumber     String
+  floor          Int?
+  area           Float? // 専有面積 m²
+  ownershipRatio Float? // 持分割合 %
+  residents      Profile[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([buildingId, roomNumber])
+  @@map("units")
+}
+
+// ユーザープロフィール（Supabase auth.users と 1:1 対応）
+model Profile {
+  id       String   @id // Supabase auth.users.id (UUID)
+  email    String   @unique
+  fullName String
+  phone    String?
+  role     UserRole @default(RESIDENT)
+  position String? // 理事長・理事など
+  unitId   String?
+  unit     Unit?    @relation(fields: [unitId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  announcements     Announcement[]
+  announcementReads AnnouncementRead[]
+  documents         Document[]
+  inquiries         Inquiry[]
+  inquiryComments   InquiryComment[]
+
+  @@map("profiles")
+}
+
+// お知らせ
+model Announcement {
+  id          String               @id @default(cuid())
+  title       String
+  content     String
+  category    AnnouncementCategory @default(GENERAL)
+  priority    AnnouncementPriority @default(NORMAL)
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  authorId    String
+  author      Profile              @relation(fields: [authorId], references: [id])
+  reads       AnnouncementRead[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@map("announcements")
+}
+
+// お知らせ既読管理
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@unique([announcementId, userId])
+  @@map("announcement_reads")
+}
+
+// 書類
+model Document {
+  id           String             @id @default(cuid())
+  title        String
+  category     DocumentCategory   @default(OTHER)
+  fileUrl      String
+  fileName     String
+  fileSize     Int?
+  mimeType     String?
+  visibility   DocumentVisibility @default(ALL_RESIDENTS)
+  version      Int                @default(1)
+  description  String?
+  uploadedById String
+  uploadedBy   Profile            @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@map("documents")
+}
+
+// 問い合わせ
+model Inquiry {
+  id          String          @id @default(cuid())
+  title       String
+  content     String
+  category    InquiryCategory @default(OTHER)
+  status      InquiryStatus   @default(RECEIVED)
+  isAnonymous Boolean         @default(false)
+  submitterId String?
+  submitter   Profile?        @relation(fields: [submitterId], references: [id])
+  assigneeId  String?
+  comments    InquiryComment[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("inquiries")
+}
+
+// 問い合わせコメント
+model InquiryComment {
+  id        String   @id @default(cuid())
+  inquiryId String
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    Profile  @relation(fields: [authorId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+
+  @@map("inquiry_comments")
+}

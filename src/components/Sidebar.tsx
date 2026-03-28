@@ -8,33 +8,34 @@ import {
   ClipboardList, LogOut, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { currentUser } from "@/data/mock";
+import { logout } from "@/app/actions/auth";
+import type { ProfileForLayout } from "@/app/(app)/layout";
 
 const navItems = [
-  { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, roles: ["resident", "board", "management", "admin"] },
-  { href: "/announcements", label: "お知らせ・掲示板", icon: Bell, roles: ["resident", "board", "management", "admin"] },
-  { href: "/meetings", label: "総会・理事会", icon: CalendarDays, roles: ["resident", "board", "management", "admin"] },
-  { href: "/finance", label: "会計・財務", icon: Wallet, roles: ["board", "management", "admin"] },
-  { href: "/equipment", label: "修繕・設備管理", icon: Wrench, roles: ["board", "management", "admin"] },
-  { href: "/inquiries", label: "問い合わせ", icon: MessageSquare, roles: ["resident", "board", "management", "admin"] },
-  { href: "/reservations", label: "共用施設予約", icon: CalendarCheck, roles: ["resident", "board", "management", "admin"] },
-  { href: "/documents", label: "書類管理", icon: FileText, roles: ["resident", "board", "management", "admin"] },
-  { href: "/surveys", label: "投票・アンケート", icon: ClipboardList, roles: ["resident", "board", "management", "admin"] },
+  { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/announcements", label: "お知らせ・掲示板", icon: Bell, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/inquiries", label: "問い合わせ", icon: MessageSquare, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/documents", label: "書類管理", icon: FileText, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/units", label: "住戸・住民管理", icon: Users, roles: ["BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/meetings", label: "総会・理事会", icon: CalendarDays, roles: ["BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/finance", label: "会計・財務", icon: Wallet, roles: ["BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/equipment", label: "修繕・設備管理", icon: Wrench, roles: ["BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/reservations", label: "共用施設予約", icon: CalendarCheck, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
+  { href: "/surveys", label: "投票・アンケート", icon: ClipboardList, roles: ["RESIDENT", "BOARD", "MANAGEMENT", "ADMIN"] },
 ];
 
 const roleLabels: Record<string, { label: string; color: string }> = {
-  resident: { label: "住民", color: "bg-green-100 text-green-800" },
-  board: { label: "理事会", color: "bg-blue-100 text-blue-800" },
-  management: { label: "管理会社", color: "bg-purple-100 text-purple-800" },
-  admin: { label: "管理者", color: "bg-red-100 text-red-800" },
+  RESIDENT: { label: "住民", color: "bg-green-100 text-green-800" },
+  BOARD: { label: "理事会", color: "bg-blue-100 text-blue-800" },
+  MANAGEMENT: { label: "管理会社", color: "bg-purple-100 text-purple-800" },
+  ADMIN: { label: "管理者", color: "bg-red-100 text-red-800" },
 };
 
-export default function Sidebar() {
+export default function Sidebar({ profile }: { profile: ProfileForLayout }) {
   const pathname = usePathname();
-  const user = currentUser;
-  const roleInfo = roleLabels[user.role];
-
-  const visibleNav = navItems.filter((item) => item.roles.includes(user.role));
+  const roleInfo = roleLabels[profile.role] ?? roleLabels.RESIDENT;
+  const visibleNav = navItems.filter((item) => item.roles.includes(profile.role));
+  const initials = profile.fullName.slice(0, 2);
 
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">
@@ -53,18 +54,23 @@ export default function Sidebar() {
       <div className="px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
-            {user.avatarInitials}
+            {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-            <div className="flex items-center gap-1">
+            <p className="text-sm font-medium text-gray-900 truncate">{profile.fullName}</p>
+            <div className="flex items-center gap-1 flex-wrap">
               <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", roleInfo.color)}>
                 {roleInfo.label}
               </span>
-              {user.position && (
-                <span className="text-xs text-gray-500">{user.position}</span>
+              {profile.position && (
+                <span className="text-xs text-gray-500">{profile.position}</span>
               )}
             </div>
+            {profile.unit && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {profile.unit.building?.name ?? ""} {profile.unit.roomNumber}号室
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -95,13 +101,15 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-gray-100">
-        <Link
-          href="/login"
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-600 transition-colors"
-        >
-          <LogOut size={16} />
-          <span>ログアウト</span>
-        </Link>
+        <form action={logout}>
+          <button
+            type="submit"
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-red-600 transition-colors w-full"
+          >
+            <LogOut size={16} />
+            <span>ログアウト</span>
+          </button>
+        </form>
       </div>
     </aside>
   );

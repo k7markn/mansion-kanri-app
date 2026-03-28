@@ -21,13 +21,13 @@
 | 言語 | TypeScript（strict モード） |
 | スタイリング | Tailwind CSS |
 | アイコン | Lucide React |
-| DB | Supabase (PostgreSQL) ※Phase 1〜 |
-| ORM | Prisma ※Phase 1〜 |
-| 認証 | Supabase Auth ※Phase 1〜 |
-| ファイル保存 | Supabase Storage ※Phase 1〜 |
-| メール通知 | Resend ※Phase 1〜 |
-| バリデーション | Zod ※Phase 1〜 |
-| ホスティング | Vercel（本番）/ GitHub Pages（モック） |
+| DB | Supabase (PostgreSQL) |
+| ORM | Prisma 7（prisma-client-js + @prisma/adapter-pg） |
+| 認証 | Supabase Auth + @supabase/ssr |
+| ファイル保存 | Supabase Storage（Phase 2〜） |
+| メール通知 | Resend（Phase 2〜） |
+| バリデーション | Zod |
+| ホスティング | Vercel（本番予定） |
 
 ---
 
@@ -37,31 +37,39 @@
 src/
 ├── app/
 │   ├── (app)/              # 認証後の画面（共通サイドバーレイアウト）
-│   │   ├── layout.tsx      # サイドバー付きレイアウト
+│   │   ├── layout.tsx      # サイドバー付きレイアウト（Supabase Auth チェック）
 │   │   ├── dashboard/      # ダッシュボード
 │   │   ├── announcements/  # お知らせ・掲示板
-│   │   ├── meetings/       # 総会・理事会管理
-│   │   ├── finance/        # 会計・財務管理
-│   │   ├── equipment/      # 修繕・設備管理
 │   │   ├── inquiries/      # 問い合わせ管理
-│   │   ├── reservations/   # 共用施設予約
 │   │   ├── documents/      # 書類管理
-│   │   └── surveys/        # 投票・アンケート
-│   ├── api/                # Route Handlers（APIエンドポイント）※Phase 1〜
+│   │   ├── units/          # 住戸・住民管理（理事以上）
+│   │   ├── meetings/       # 総会・理事会管理（Phase 2〜）
+│   │   ├── finance/        # 会計・財務管理（Phase 2〜）
+│   │   ├── equipment/      # 修繕・設備管理（Phase 3〜）
+│   │   ├── reservations/   # 共用施設予約（Phase 3〜）
+│   │   └── surveys/        # 投票・アンケート（Phase 2〜）
+│   ├── actions/            # Server Actions（auth.ts）
+│   ├── api/                # Route Handlers
+│   │   ├── announcements/
+│   │   ├── inquiries/
+│   │   ├── documents/
+│   │   └── units/
 │   └── login/              # ログイン画面
 ├── components/
-│   ├── ui/                 # 汎用UIコンポーネント
-│   ├── Sidebar.tsx         # サイドバーナビゲーション
+│   ├── Sidebar.tsx         # サイドバーナビゲーション（profile props受け取り）
 │   └── Header.tsx          # ページヘッダー
 ├── data/
-│   └── mock.ts             # モックデータ（Phase 0のみ）
+│   └── mock.ts             # Phase 0 モックデータ（Phase 2以降のUI参考用）
+├── generated/
+│   └── prisma/             # Prismaクライアント生成物（git管理外）
 ├── lib/
-│   ├── supabase/           # Supabaseクライアント ※Phase 1〜
-│   ├── prisma.ts           # Prismaクライアント ※Phase 1〜
+│   ├── supabase/
+│   │   ├── client.ts       # ブラウザ用 Supabase クライアント
+│   │   └── server.ts       # サーバー用 Supabase クライアント（cookies使用）
+│   ├── prisma.ts           # Prismaクライアント シングルトン
 │   └── utils.ts            # 汎用ユーティリティ（cn関数等）
-├── types/
-│   └── index.ts            # 共通TypeScript型定義
-└── hooks/                  # カスタムReact Hooks ※Phase 1〜
+└── types/
+    └── index.ts            # 共通TypeScript型定義（Phase 0 モック用）
 ```
 
 ---
@@ -69,13 +77,28 @@ src/
 ## 主要コマンド
 
 ```bash
-npm run dev          # 開発サーバー起動（http://localhost:3000）
-npm run build        # 本番ビルド（静的エクスポート）
-npm run lint         # ESLint 実行
-npx prisma generate  # Prismaクライアント型生成
-npx prisma migrate dev --name <name>  # DBマイグレーション作成・適用
-npx prisma studio    # Prisma Studio（DBビューワー）起動
+npm run dev                          # 開発サーバー起動（http://localhost:3000）
+npm run build                        # 本番ビルド
+npm run lint                         # ESLint 実行
+npx prisma generate                  # Prismaクライアント型生成
+npx prisma migrate dev --name <name> # DBマイグレーション作成・適用
+npx tsx prisma/seed.ts               # シードデータ投入
+npx prisma studio                    # Prisma Studio（DBビューワー）起動
 ```
+
+---
+
+## Prisma / DB 接続の仕組み
+
+Prisma 7 では組み込みDB接続エンジンが廃止されたため、ドライバーアダプターが必要。
+
+| 用途 | 接続先 | 環境変数 |
+|---|---|---|
+| アプリのクエリ | Transaction Pooler（port 6543） | `DATABASE_URL` |
+| マイグレーション | Session Pooler（port 5432） | `DIRECT_URL` |
+
+- `src/lib/prisma.ts` → `DATABASE_URL` + `@prisma/adapter-pg` でクライアント生成
+- `prisma.config.ts` → `DIRECT_URL` を migrate コマンドに使用（dotenv/config で .env 読み込み）
 
 ---
 
@@ -83,10 +106,10 @@ npx prisma studio    # Prisma Studio（DBビューワー）起動
 
 | ロール | 値 | 説明 | アクセス可能な主な機能 |
 |---|---|---|---|
-| 住民 | `resident` | 区分所有者・居住者 | お知らせ閲覧、問い合わせ、施設予約、書類閲覧 |
-| 理事 | `board` | 理事長・理事・監事 | 住民機能 + 会計・設備・総会管理 |
-| 管理会社 | `management` | 管理会社スタッフ | 理事機能 + 全住戸管理・マスタ管理 |
-| 管理者 | `admin` | システム管理者 | 全機能 + テナント管理 |
+| 住民 | `RESIDENT` | 区分所有者・居住者 | お知らせ閲覧、問い合わせ送信、書類閲覧 |
+| 理事 | `BOARD` | 理事長・理事・監事 | 住民機能 + 住戸管理・問い合わせ対応・お知らせ投稿 |
+| 管理会社 | `MANAGEMENT` | 管理会社スタッフ | 理事機能 + 全住戸管理・マスタ管理 |
+| 管理者 | `ADMIN` | システム管理者 | 全機能 |
 
 ---
 
@@ -94,15 +117,18 @@ npx prisma studio    # Prisma Studio（DBビューワー）起動
 
 ### 全般
 - TypeScript strict モードを維持する（`any` は原則禁止）
-- コンポーネントは関数コンポーネント（`function` 宣言）で統一
+- コンポーネントは関数コンポーネントで統一
 - `"use client"` は必要最小限のコンポーネントにのみ付与する
 - Server Components を優先し、インタラクティブな部分のみ Client Components にする
+
+### ページ構成パターン
+- `page.tsx` → Server Component（Supabase Auth + Prisma でデータ取得）
+- `XxxClient.tsx` → Client Component（インタラクション担当）
 
 ### ファイル・命名
 - コンポーネントファイル: PascalCase（例: `AnnouncementCard.tsx`）
 - ユーティリティ・フック: camelCase（例: `useAnnouncements.ts`）
 - ルートディレクトリ: kebab-case（例: `announcements/`）
-- 型定義は `src/types/index.ts` に集約するか、機能単位で `types.ts` を置く
 
 ### スタイリング
 - クラス結合には必ず `cn()` ユーティリティ（`src/lib/utils.ts`）を使う
@@ -112,7 +138,7 @@ npx prisma studio    # Prisma Studio（DBビューワー）起動
 ### API（Route Handlers）
 - `src/app/api/` 以下に機能別ディレクトリで配置
 - リクエスト・レスポンスの型は Zod スキーマで定義する
-- エラーレスポンスは統一フォーマット `{ error: string, code?: string }` を使う
+- エラーレスポンスは統一フォーマット `{ error: string }` を使う
 - 認証が必要なエンドポイントは必ず Supabase Auth でセッションを検証する
 
 ### DB・Prisma
@@ -125,6 +151,8 @@ npx prisma studio    # Prisma Studio（DBビューワー）起動
 
 ## 環境変数
 
+`.env.example` を参照。実際の値は `.env`（Prisma CLI用）と `.env.local`（Next.js用）に設定する。
+
 ```bash
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
@@ -132,30 +160,35 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=      # サーバーサイド専用（クライアントに露出禁止）
 
 # Database（Prisma）
-DATABASE_URL=
-DIRECT_URL=                     # Supabase connection pooling 用
+DATABASE_URL=                   # Transaction Pooler (port 6543) - アプリ用
+DIRECT_URL=                     # Session Pooler (port 5432) - マイグレーション用
 
-# メール（Resend）
+# メール（Resend）Phase 2〜
 RESEND_API_KEY=
 
-# アプリ
+# アプリURL
 NEXT_PUBLIC_APP_URL=
 ```
 
 ---
 
-## 現在の状態（Phase 0）
+## 現在の状態（Phase 1 完了）
 
-- モック実装済み。すべてのデータは `src/data/mock.ts` のインメモリデータ
-- 認証は見た目のみ（実際の認証なし）
-- GitHub Pages にデプロイ済み: https://k7markn.github.io/mansion-kanri-app/
+### 実装済み機能
+- Supabase Auth によるログイン・ログアウト・セッション管理
+- ミドルウェアによる認証保護（未ログインは `/login` にリダイレクト）
+- ロール別ナビゲーション（RESIDENT / BOARD / MANAGEMENT / ADMIN）
+- ダッシュボード（リアルデータ表示）
+- お知らせ・掲示板（CRUD・カテゴリフィルター・既読管理）
+- 問い合わせ管理（投稿・匿名・ステータス更新）
+- 書類管理（一覧・検索・権限別フィルター）
+- 住戸・住民管理（理事以上）
 
-Phase 1 実装時は以下の変更が必要：
-1. `src/data/mock.ts` のデータを Supabase + Prisma に置き換え
-2. `src/app/login/page.tsx` の認証処理を Supabase Auth に接続
-3. `currentUser` の参照をセッション取得に変更
-4. `next.config.ts` の `output: "export"` を削除（SSR/SSG 使用時）
-5. ホスティングを GitHub Pages → Vercel に移行
+### 残課題（Phase 2以降）
+- 総会・理事会管理、会計・財務管理、投票・アンケート（Phase 2）
+- 修繕・設備管理、共用施設予約（Phase 3）
+- Supabase Storage によるファイルアップロード
+- Resend によるメール通知
 
 ---
 
@@ -163,4 +196,3 @@ Phase 1 実装時は以下の変更が必要：
 
 - 要件定義書: `マンション管理組合アプリ_要件定義書.md`（リポジトリルートの一つ上）
 - GitHub リポジトリ: https://github.com/k7markn/mansion-kanri-app
-- モックデモ: https://k7markn.github.io/mansion-kanri-app/

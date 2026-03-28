@@ -1,12 +1,13 @@
-import Header from "@/components/Header";
-import {
-  Building2, Users, Wallet, AlertTriangle, CalendarDays,
-  MessageSquare, TrendingUp, ChevronRight, Bell, Wrench,
-} from "lucide-react";
-import { dashboardStats, mockAnnouncements, mockMeetings, mockInquiries } from "@/data/mock";
-import { currentUser } from "@/data/mock";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import Header from "@/components/Header";
 import { cn } from "@/lib/utils";
+import {
+  Building2, Users, MessageSquare, ChevronRight,
+  Bell, AlertCircle,
+} from "lucide-react";
 
 function StatCard({
   icon: Icon, label, value, sub, color, alert,
@@ -32,83 +33,97 @@ function StatCard({
   );
 }
 
-const priorityConfig = {
-  urgent: { label: "緊急", color: "bg-red-100 text-red-700" },
-  important: { label: "重要", color: "bg-orange-100 text-orange-700" },
-  normal: { label: "通常", color: "bg-gray-100 text-gray-600" },
+const priorityConfig: Record<string, { label: string; color: string }> = {
+  URGENT: { label: "緊急", color: "bg-red-100 text-red-700" },
+  IMPORTANT: { label: "重要", color: "bg-orange-100 text-orange-700" },
+  NORMAL: { label: "通常", color: "bg-gray-100 text-gray-600" },
 };
 
-const meetingTypeLabels: Record<string, string> = {
-  annual_general: "定期総会",
-  extraordinary_general: "臨時総会",
-  board: "理事会",
-  extraordinary_board: "臨時理事会",
+const statusConfig: Record<string, { label: string; color: string }> = {
+  RECEIVED: { label: "受付済", color: "bg-red-100 text-red-600" },
+  IN_PROGRESS: { label: "対応中", color: "bg-yellow-100 text-yellow-700" },
+  COMPLETED: { label: "完了", color: "bg-green-100 text-green-700" },
+  ON_HOLD: { label: "保留", color: "bg-gray-100 text-gray-600" },
 };
 
-export default function DashboardPage() {
-  const user = currentUser;
-  const isBoard = user.role === "board" || user.role === "management";
+function formatDate(str: string | Date | null) {
+  if (!str) return "";
+  return new Date(str).toLocaleDateString("ja-JP", { month: "long", day: "numeric" });
+}
 
-  const upcomingMeetings = mockMeetings
-    .filter((m) => m.status === "scheduled")
-    .sort((a, b) => a.date.localeCompare(b.date));
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const recentAnnouncements = mockAnnouncements
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
-    .slice(0, 4);
+  const profile = await prisma.profile.findUnique({
+    where: { id: user.id },
+    include: { unit: { include: { building: true } } },
+  });
+  if (!profile) redirect("/login");
 
-  const openInquiries = mockInquiries.filter((i) => i.status === "open" || i.status === "in_progress");
+  const isBoard = profile.role !== "RESIDENT";
+
+  const [
+    totalUnits,
+    occupiedUnits,
+    recentAnnouncements,
+    openInquiries,
+    unreadCount,
+  ] = await Promise.all([
+    prisma.unit.count(),
+    prisma.unit.count({ where: { residents: { some: {} } } }),
+    prisma.announcement.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: { author: { select: { fullName: true } } },
+    }),
+    prisma.inquiry.findMany({
+      where: { status: { in: ["RECEIVED", "IN_PROGRESS"] } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    }),
+    prisma.announcementRead.count({
+      where: {
+        userId: { not: user.id },
+        announcement: { authorId: user.id },
+      },
+    }),
+  ]);
+
+  const totalResidents = await prisma.profile.count({ where: { role: "RESIDENT" } });
 
   return (
     <div>
       <Header
         title="ダッシュボード"
-        subtitle={`ようこそ、${user.name}さん（${user.position ?? ""}）`}
+        subtitle={`ようこそ、${profile.fullName}さん${profile.position ? `（${profile.position}）` : ""}`}
       />
 
       <div className="p-6 space-y-6">
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            icon={Building2} label="総戸数 / 入居戸数" color="bg-blue-50 text-blue-600"
-            value={`${dashboardStats.totalUnits}戸`} sub={`入居中: ${dashboardStats.occupiedUnits}戸`}
+            icon={Building2} label="総住戸数 / 入居中" color="bg-blue-50 text-blue-600"
+            value={`${totalUnits}戸`} sub={`入居中: ${occupiedUnits}戸`}
           />
-          {isBoard ? (
-            <>
-              <StatCard
-                icon={Wallet} label="修繕積立金残高" color="bg-green-50 text-green-600"
-                value={`¥${(dashboardStats.repairReserveBalance / 10000).toFixed(0)}万`}
-                sub="2026年3月末時点"
-              />
-              <StatCard
-                icon={TrendingUp} label="管理費収納率" color="bg-indigo-50 text-indigo-600"
-                value={`${dashboardStats.managementFeeCollectionRate}%`} sub="2026年3月度"
-              />
-              <StatCard
-                icon={AlertTriangle} label="未収金住戸数" color="bg-red-50 text-red-500"
-                value={`${dashboardStats.overduePayments}戸`} sub="督促対応中" alert
-              />
-            </>
-          ) : (
-            <>
-              <StatCard
-                icon={CalendarDays} label="直近の会議" color="bg-green-50 text-green-600"
-                value={`${dashboardStats.upcomingMeetings}件`} sub="予定あり"
-              />
-              <StatCard
-                icon={MessageSquare} label="未対応問い合わせ" color="bg-orange-50 text-orange-500"
-                value={`${dashboardStats.openInquiries}件`} sub="確認が必要"
-              />
-              <StatCard
-                icon={Wrench} label="次回点検期限" color="bg-purple-50 text-purple-500"
-                value="04/30" sub="自動火災報知設備"
-              />
-            </>
-          )}
+          <StatCard
+            icon={Users} label="登録住民数" color="bg-green-50 text-green-600"
+            value={`${totalResidents}名`}
+          />
+          <StatCard
+            icon={MessageSquare} label="未対応問い合わせ" color="bg-orange-50 text-orange-500"
+            value={`${openInquiries.length}件`} sub="確認が必要"
+            alert={openInquiries.length > 0}
+          />
+          <StatCard
+            icon={Bell} label="最新お知らせ" color="bg-indigo-50 text-indigo-600"
+            value={`${recentAnnouncements.length}件`}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Announcements */}
+          {/* Recent Announcements */}
           <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2">
@@ -119,89 +134,73 @@ export default function DashboardPage() {
                 すべて見る <ChevronRight size={12} />
               </Link>
             </div>
-            <div className="divide-y divide-gray-50">
-              {recentAnnouncements.map((a) => {
-                const p = priorityConfig[a.priority];
-                return (
-                  <div key={a.id} className="px-5 py-3.5 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 flex-shrink-0", p.color)}>
-                        {p.label}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{a.publishedAt} · {a.authorName}</p>
+            {recentAnnouncements.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">お知らせはありません</div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {recentAnnouncements.map((a) => {
+                  const p = priorityConfig[a.priority] ?? priorityConfig.NORMAL;
+                  return (
+                    <div key={a.id} className="px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 flex-shrink-0", p.color)}>
+                          {p.label}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{a.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {formatDate(a.publishedAt ?? a.createdAt)} · {a.author.fullName}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Upcoming Meetings & Inquiries */}
-          <div className="space-y-4">
-            {/* Upcoming meetings */}
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <CalendarDays size={18} className="text-blue-600" />
-                  <h2 className="font-semibold text-gray-900">予定の会議</h2>
-                </div>
-                <Link href="/meetings" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                  すべて <ChevronRight size={12} />
-                </Link>
+          {/* Open Inquiries */}
+          <div className="bg-white rounded-xl border border-gray-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={18} className="text-orange-500" />
+                <h2 className="font-semibold text-gray-900">未対応問い合わせ</h2>
               </div>
-              <div className="divide-y divide-gray-50">
-                {upcomingMeetings.map((m) => (
-                  <div key={m.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
-                    <p className="text-sm font-medium text-gray-900">{m.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{m.date} {m.time} · {m.location}</p>
-                    <span className="text-xs text-blue-600 font-medium">{meetingTypeLabels[m.type]}</span>
-                  </div>
-                ))}
-              </div>
+              <Link href="/inquiries" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                すべて <ChevronRight size={12} />
+              </Link>
             </div>
-
-            {/* Open inquiries */}
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <MessageSquare size={18} className="text-orange-500" />
-                  <h2 className="font-semibold text-gray-900">未対応問い合わせ</h2>
-                </div>
-                <Link href="/inquiries" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                  すべて <ChevronRight size={12} />
-                </Link>
-              </div>
+            {openInquiries.length === 0 ? (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">未対応はありません</div>
+            ) : (
               <div className="divide-y divide-gray-50">
-                {openInquiries.map((inq) => (
-                  <div key={inq.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
-                    <p className="text-sm font-medium text-gray-900 truncate">{inq.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className={cn("text-xs px-1.5 py-0.5 rounded",
-                        inq.status === "open" ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-700"
-                      )}>
-                        {inq.status === "open" ? "未対応" : "対応中"}
-                      </span>
-                      <span className="text-xs text-gray-500">{inq.submittedAt}</span>
+                {openInquiries.map((inq) => {
+                  const st = statusConfig[inq.status] ?? statusConfig.RECEIVED;
+                  return (
+                    <div key={inq.id} className="px-5 py-3 hover:bg-gray-50 transition-colors">
+                      <p className="text-sm font-medium text-gray-900 truncate">{inq.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={cn("text-xs px-1.5 py-0.5 rounded", st.color)}>{st.label}</span>
+                        <span className="text-xs text-gray-500">{formatDate(inq.createdAt)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Alert Banner */}
-        {dashboardStats.nextInspectionDue && isBoard && (
+        {/* Alert for open inquiries (board users) */}
+        {isBoard && openInquiries.filter((i) => i.status === "RECEIVED").length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
-            <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-medium text-amber-900">設備点検期限が近づいています</p>
+              <p className="text-sm font-medium text-amber-900">未対応の問い合わせがあります</p>
               <p className="text-sm text-amber-700 mt-0.5">
-                {dashboardStats.nextInspectionDue} の点検期限が迫っています。
-                <Link href="/equipment" className="underline ml-1">設備管理で確認する</Link>
+                {openInquiries.filter((i) => i.status === "RECEIVED").length}件の問い合わせが未対応です。
+                <Link href="/inquiries" className="underline ml-1">問い合わせ管理で確認する</Link>
               </p>
             </div>
           </div>
